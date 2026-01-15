@@ -68,7 +68,8 @@ class PluginBase(ABC):
     async def distill(
         self,
         raw: RawSnapshot,
-        history: list[DistilledSnapshot]
+        history: list[DistilledSnapshot],
+        instance: SourceInstance
     ) -> DistilledSnapshot:
         """
         Distill raw data into a normalized sentiment snapshot.
@@ -79,6 +80,7 @@ class PluginBase(ABC):
         - Extract terms if applicable (may be empty list)
         - Calculate anomaly score relative to history
         - Set coverage based on data quality
+        - Use instance.config for mode-specific calculations
         
         The distillation process can use historical context to detect
         changes, anomalies, and trends.
@@ -86,6 +88,7 @@ class PluginBase(ABC):
         Args:
             raw: The raw snapshot to distill
             history: Recent distilled snapshots for this source (may be empty)
+            instance: The source instance with configuration
             
         Returns:
             DistilledSnapshot ready for persistence

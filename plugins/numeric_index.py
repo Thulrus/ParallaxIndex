@@ -11,8 +11,14 @@ from typing import Any
 
 import httpx
 
-from core.schemas import (DistilledSnapshot, PluginDefinition, RawSnapshot,
-                          SourceCategory, SourceInstance, TermStat)
+from core.schemas import (
+    DistilledSnapshot,
+    PluginDefinition,
+    RawSnapshot,
+    SourceCategory,
+    SourceInstance,
+    TermStat,
+)
 from plugins.base import PluginBase
 
 
@@ -30,12 +36,11 @@ class NumericIndexPlugin(PluginBase):
         """Return plugin definition."""
         return PluginDefinition(
             plugin_id="numeric_index",
-            plugin_version="1.0.0",
+            plugin_version="2.0.0",
             display_name="Numeric Index",
             description=(
                 "Tracks a single numeric value from a URL. "
-                "Determines sentiment based on whether the value increases "
-                "or decreases compared to baseline or previous readings."
+                "Calculates sentiment based on configurable range and polarity modes."
             ),
             source_category=SourceCategory.NUMERIC,
             config_schema={
@@ -46,18 +51,32 @@ class NumericIndexPlugin(PluginBase):
                         "format": "uri",
                         "description": "URL that returns a numeric value"
                     },
-                    "baseline": {
-                        "type": "number",
-                        "description": "Baseline value for comparison (optional)"
-                    },
                     "json_path": {
                         "type": "string",
-                        "description": "JSON path to extract value (e.g., 'data.value')"
+                        "description": "JSON path to extract value (e.g., 'data.value', 'data[0]')"
                     },
                     "timeout": {
                         "type": "integer",
                         "default": 10,
                         "description": "Request timeout in seconds"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["higher_is_better", "lower_is_better", "target_is_best", "change_tracking"],
+                        "default": "change_tracking",
+                        "description": "Sentiment calculation mode"
+                    },
+                    "min_value": {
+                        "type": "number",
+                        "description": "Minimum value of expected range (required for range-based modes)"
+                    },
+                    "max_value": {
+                        "type": "number",
+                        "description": "Maximum value of expected range (required for range-based modes)"
+                    },
+                    "midpoint": {
+                        "type": "number",
+                        "description": "Neutral/target value (defaults to middle of range if not specified)"
                     }
                 },
                 "required": ["url"]
@@ -183,50 +202,50 @@ class NumericIndexPlugin(PluginBase):
     async def distill(
         self,
         raw: RawSnapshot,
-        history: list[DistilledSnapshot]
+        history: list[DistilledSnapshot],
+        instance: SourceInstance
     ) -> DistilledSnapshot:
         """
-        Distill numeric value into sentiment snapshot.
+        Distill a raw numeric reading into a sentiment snapshot.
         
-        Sentiment is determined by:
-        - Change from baseline (if configured) or previous value
-        - Magnitude of change determines confidence
-        - Volatility tracks recent fluctuations
+        Sentiment calculation depends on configured mode:
+        - higher_is_better: Higher values = positive sentiment
+        - lower_is_better: Lower values = positive sentiment
+        - target_is_best: Closer to midpoint = positive sentiment
+        - change_tracking: Based on percent change from previous value
         """
         current_value = raw.payload["value"]
+        config = instance.config
+        mode = config.get("mode", "change_tracking")
         
-        # Get instance config to check for baseline
-        # (In practice, we'd pass this in or store it, but for MVP we calculate from history)
-        
-        # Determine baseline and previous value
-        baseline = None
+        # Get previous value for reference
         previous_value = None
-        
+        baseline = None
         if history:
-            # Use most recent snapshot as previous
             previous_value = self._extract_value_from_history(history[-1])
-            
-            # Use oldest value as baseline if no explicit baseline
             if len(history) >= 1:
                 baseline = self._extract_value_from_history(history[0])
         
-        # Calculate sentiment
-        if previous_value is not None:
-            change = current_value - previous_value
-            percent_change = (change / previous_value) if previous_value != 0 else 0
-            
-            # Sentiment based on percent change
-            # ±5% = ±0.5 sentiment, ±10% = ±1.0 sentiment
-            sentiment = max(-1.0, min(1.0, percent_change * 10))
-            
-            # Confidence based on magnitude of change
-            confidence = min(1.0, abs(percent_change) * 5)
-            if confidence < 0.1:
-                confidence = 0.5  # Moderate confidence for small changes
+        # Calculate sentiment based on mode
+        if mode == "change_tracking":
+            sentiment, confidence = self._calculate_change_sentiment(current_value, previous_value)
         else:
-            # First reading - neutral sentiment
-            sentiment = 0.0
-            confidence = 0.5
+            # Range-based modes
+            min_value = config.get("min_value")
+            max_value = config.get("max_value")
+            midpoint = config.get("midpoint")
+            
+            if min_value is None or max_value is None:
+                # Fallback to change tracking if range not configured
+                sentiment, confidence = self._calculate_change_sentiment(current_value, previous_value)
+            else:
+                # Calculate midpoint if not specified
+                if midpoint is None:
+                    midpoint = (min_value + max_value) / 2
+                
+                sentiment, confidence = self._calculate_range_sentiment(
+                    current_value, min_value, max_value, midpoint, mode
+                )
         
         # Calculate volatility from recent history
         volatility = self._calculate_volatility(history, current_value)
@@ -252,18 +271,25 @@ class NumericIndexPlugin(PluginBase):
                 self._extract_value_from_history(s) for s in history
             ])
         
-        min_value = min(all_values)
-        max_value = max(all_values)
+        observed_min = min(all_values)
+        observed_max = max(all_values)
         
         # Build metadata for display
         metadata = {
             "current_value": current_value,
-            "min_value": min_value,
-            "max_value": max_value,
+            "observed_min": observed_min,
+            "observed_max": observed_max,
             "sample_count": len(history) + 1,
             "previous_value": previous_value,
-            "baseline": baseline
+            "baseline": baseline,
+            "mode": mode
         }
+        
+        # Add range configuration if using range-based mode
+        if mode != "change_tracking":
+            metadata["configured_min"] = config.get("min_value")
+            metadata["configured_max"] = config.get("max_value")
+            metadata["configured_midpoint"] = config.get("midpoint")
         
         return DistilledSnapshot(
             source_id=raw.source_id,
@@ -277,6 +303,132 @@ class NumericIndexPlugin(PluginBase):
             coverage=1.0,
             metadata=metadata
         )
+    
+    def _calculate_change_sentiment(self, current_value: float, previous_value: float | None) -> tuple[float, float]:
+        """
+        Calculate sentiment based on percent change from previous value.
+        
+        Returns:
+            Tuple of (sentiment, confidence)
+        """
+        if previous_value is not None and previous_value != 0:
+            change = current_value - previous_value
+            percent_change = change / previous_value
+            
+            # ±5% = ±0.5 sentiment, ±10% = ±1.0 sentiment
+            sentiment = max(-1.0, min(1.0, percent_change * 10))
+            
+            # Confidence based on magnitude of change
+            confidence = min(1.0, abs(percent_change) * 5)
+            if confidence < 0.1:
+                confidence = 0.5
+        else:
+            # First reading - neutral sentiment
+            sentiment = 0.0
+            confidence = 0.5
+        
+        return sentiment, confidence
+    
+    def _calculate_range_sentiment(
+        self,
+        value: float,
+        min_value: float,
+        max_value: float,
+        midpoint: float,
+        mode: str
+    ) -> tuple[float, float]:
+        """
+        Calculate sentiment based on position within a range.
+        
+        Args:
+            value: Current value
+            min_value: Minimum of range
+            max_value: Maximum of range
+            midpoint: Neutral/target value
+            mode: 'higher_is_better', 'lower_is_better', or 'target_is_best'
+        
+        Returns:
+            Tuple of (sentiment, confidence)
+        """
+        if mode == "higher_is_better":
+            # At or above max: sentiment = 1
+            # At midpoint: sentiment = 0
+            # At or below min: sentiment = -1
+            if value >= max_value:
+                sentiment = 1.0
+            elif value <= min_value:
+                sentiment = -1.0
+            elif value >= midpoint:
+                # Scale from 0 to 1
+                sentiment = (value - midpoint) / (max_value - midpoint)
+            else:
+                # Scale from -1 to 0
+                sentiment = (value - midpoint) / (midpoint - min_value)
+            
+            # High confidence when near extremes
+            distance_from_mid = abs(value - midpoint)
+            max_distance = max(abs(max_value - midpoint), abs(min_value - midpoint))
+            confidence = min(1.0, 0.5 + (distance_from_mid / max_distance) * 0.5)
+        
+        elif mode == "lower_is_better":
+            # Inverse of higher_is_better
+            # At or below min: sentiment = 1
+            # At midpoint: sentiment = 0
+            # At or above max: sentiment = -1
+            if value <= min_value:
+                sentiment = 1.0
+            elif value >= max_value:
+                sentiment = -1.0
+            elif value <= midpoint:
+                # Scale from 1 to 0
+                sentiment = (midpoint - value) / (midpoint - min_value)
+            else:
+                # Scale from 0 to -1
+                sentiment = -(value - midpoint) / (max_value - midpoint)
+            
+            distance_from_mid = abs(value - midpoint)
+            max_distance = max(abs(max_value - midpoint), abs(min_value - midpoint))
+            confidence = min(1.0, 0.5 + (distance_from_mid / max_distance) * 0.5)
+        
+        elif mode == "target_is_best":
+            # Being at midpoint is ideal (sentiment = 1)
+            # Being at either extreme is bad (sentiment = -1)
+            distance_from_target = abs(value - midpoint)
+            
+            if value >= midpoint:
+                max_distance = max_value - midpoint
+            else:
+                max_distance = midpoint - min_value
+            
+            # Clamp value to range
+            if value > max_value:
+                distance_from_target = abs(max_value - midpoint)
+                max_distance = max_value - midpoint
+            elif value < min_value:
+                distance_from_target = abs(min_value - midpoint)
+                max_distance = midpoint - min_value
+            
+            # Sentiment decreases as we move away from target
+            if max_distance > 0:
+                sentiment = 1.0 - (distance_from_target / max_distance)
+                # Convert to -1 to +1 range (instead of 0 to 1)
+                sentiment = (sentiment * 2) - 1
+            else:
+                sentiment = 1.0
+            
+            # High confidence near extremes or target
+            if distance_from_target < max_distance * 0.1:
+                confidence = 0.9  # High confidence at target
+            elif distance_from_target > max_distance * 0.8:
+                confidence = 0.9  # High confidence at extremes
+            else:
+                confidence = 0.6
+        else:
+            # Unknown mode, return neutral
+            sentiment = 0.0
+            confidence = 0.5
+        
+        return sentiment, confidence
     
     def _extract_value_from_history(self, snapshot: DistilledSnapshot) -> float:
         """

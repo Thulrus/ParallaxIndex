@@ -172,7 +172,7 @@ class CollectionScheduler:
             history = await self.db.get_snapshot_history(source.source_id, limit=50)
             
             # Distill
-            distilled = await plugin.distill(raw, list(reversed(history)))
+            distilled = await plugin.distill(raw, list(reversed(history)), source)
             
             # Save distilled snapshot
             await self.db.save_snapshot(distilled)

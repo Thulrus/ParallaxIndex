@@ -62,23 +62,46 @@
 <div class="card">
     <h3>Current Data</h3>
     {% set metadata = history[0].metadata %}
-    {% if source.plugin_id == 'NUMERIC' %}
+    {% if source.plugin_id == 'NUMERIC' or source.plugin_id == 'numeric_index' %}
         <table>
+            <tr>
+                <th>Sentiment Mode</th>
+                <td>
+                    <strong>{{ metadata.get('mode', 'change_tracking').replace('_', ' ').title() }}</strong>
+                    {% if metadata.get('mode') == 'higher_is_better' %}
+                        <span style="color: #2e7d32;">↑ Higher values are better</span>
+                    {% elif metadata.get('mode') == 'lower_is_better' %}
+                        <span style="color: #d32f2f;">↓ Lower values are better</span>
+                    {% elif metadata.get('mode') == 'target_is_best' %}
+                        <span style="color: #1976d2;">🎯 Closer to target is better</span>
+                    {% else %}
+                        <span style="color: #6b7280;">Tracks percent change</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if metadata.get('configured_min') is not none %}
+            <tr>
+                <th>Configured Range</th>
+                <td>
+                    {{ "%.2f"|format(metadata.configured_min) }} to {{ "%.2f"|format(metadata.configured_max) }}
+                    {% if metadata.get('configured_midpoint') is not none %}
+                        (midpoint: {{ "%.2f"|format(metadata.configured_midpoint) }})
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
             <tr>
                 <th>Current Value</th>
                 <td style="font-size: 1.5rem; font-weight: bold; color: #2c5282;">{{ "%.2f"|format(metadata.current_value) }}</td>
             </tr>
             <tr>
-                <th>Minimum Observed</th>
-                <td>{{ "%.2f"|format(metadata.min_value) }}</td>
-            </tr>
-            <tr>
-                <th>Maximum Observed</th>
-                <td>{{ "%.2f"|format(metadata.max_value) }}</td>
-            </tr>
-            <tr>
-                <th>Range</th>
-                <td>{{ "%.2f"|format(metadata.max_value - metadata.min_value) }}</td>
+                <th>Observed Range</th>
+                <td>
+                    {{ "%.2f"|format(metadata.get('observed_min', metadata.get('min_value', 0))) }} 
+                    to 
+                    {{ "%.2f"|format(metadata.get('observed_max', metadata.get('max_value', 0))) }}
+                    (span: {{ "%.2f"|format(metadata.get('observed_max', metadata.get('max_value', 0)) - metadata.get('observed_min', metadata.get('min_value', 0))) }})
+                </td>
             </tr>
             {% if metadata.previous_value is not none %}
             <tr>

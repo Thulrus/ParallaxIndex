@@ -140,12 +140,16 @@
             </div>
         </div>
         
-        <div class="form-group">
-            <label for="config_json">Configuration (JSON)</label>
-            <textarea name="config_json" id="config_json" required placeholder='{"url": "https://api.example.com/data"}'
-            >{% if source %}{{ source.config | tojson }}{% else %}{}{% endif %}</textarea>
-            <div id="schema_help" style="margin-top: 0.5rem; color: #7f8c8d; font-size: 0.875rem;"></div>
+        <!-- Dynamic Configuration Fields -->
+        <div id="dynamic-config-fields">
+            <!-- Fields will be generated here based on plugin schema -->
         </div>
+        
+        <!-- Hidden field for json_path from API preview -->
+        <input type="hidden" id="config_json_path" value="">
+        
+        <!-- Hidden field to store final JSON config -->
+        <input type="hidden" name="config_json" id="config_json" value="{}">
         
         <div style="display: flex; gap: 1rem;">
             <button type="submit" class="btn btn-success">{% if source %}Update{% else %}Create{% endif %} Source</button>
@@ -248,6 +252,13 @@
 let currentApiData = null;
 let selectedField = null;
 
+// Store existing config for edit mode
+{% if source %}
+window.existingSourceConfig = {{ source.config | tojson }};
+{% else %}
+window.existingSourceConfig = {};
+{% endif %}
+
 // Schedule presets mapping
 const schedulePresets = {
     '15min': '*/15 * * * *',
@@ -323,51 +334,168 @@ function updateDailySchedule() {
 function updateConfigSchema() {
     const select = document.getElementById('plugin_id');
     const option = select.options[select.selectedIndex];
-    const schemaHelp = document.getElementById('schema_help');
     const apiPreviewSection = document.getElementById('api-preview-section');
-    const configField = document.getElementById('config_json');
+    const dynamicFields = document.getElementById('dynamic-config-fields');
     
-    if (option.value) {
-        // Get schema from script tag instead of data attribute
-        const schemaId = option.getAttribute('data-schema-id');
-        const schemaElement = document.getElementById(schemaId);
-        const schema = schemaElement ? JSON.parse(schemaElement.textContent) : {};
-        const category = option.getAttribute('data-category');
-        
-        // Show API preview for numeric plugins
-        if (category === 'NUMERIC') {
-            apiPreviewSection.style.display = 'block';
-        } else {
-            apiPreviewSection.style.display = 'none';
-        }
-        
-        let help = '<strong>Required fields:</strong><br>';
-        
-        if (schema.properties) {
-            for (const [key, prop] of Object.entries(schema.properties)) {
-                const required = schema.required && schema.required.includes(key);
-                help += `• <code>${key}</code> (${prop.type})${required ? ' <em>required</em>' : ''}: ${prop.description || ''}<br>`;
-            }
-        }
-        
-        schemaHelp.innerHTML = help;
-        
-        // Set example config if empty
-        if (configField.value === '{}' || configField.value === '') {
-            const example = {};
-            if (schema.properties) {
-                for (const [key, prop] of Object.entries(schema.properties)) {
-                    if (schema.required && schema.required.includes(key)) {
-                        example[key] = prop.default || (prop.type === 'string' ? '' : 0);
-                    }
-                }
-            }
-            configField.value = JSON.stringify(example, null, 2);
-        }
+    if (!option.value) {
+        apiPreviewSection.style.display = 'none';
+        dynamicFields.innerHTML = '';
+        return;
+    }
+    
+    // Get schema from script tag
+    const schemaId = option.getAttribute('data-schema-id');
+    const schemaElement = document.getElementById(schemaId);
+    const schema = schemaElement ? JSON.parse(schemaElement.textContent) : {};
+    const category = option.getAttribute('data-category');
+    
+    // Show API preview for numeric plugins
+    if (category === 'NUMERIC') {
+        apiPreviewSection.style.display = 'block';
     } else {
-        schemaHelp.innerHTML = '';
         apiPreviewSection.style.display = 'none';
     }
+    
+    // Generate form fields from schema
+    dynamicFields.innerHTML = '';
+    
+    if (schema.properties) {
+        // Get existing config from global variable if editing
+        const existingConfig = window.existingSourceConfig || {};
+        
+        for (const [key, prop] of Object.entries(schema.properties)) {
+            const isRequired = schema.required && schema.required.includes(key);
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'form-group';
+            fieldDiv.id = `field-${key}`;
+            
+            // Skip URL and json_path as they're handled by API preview
+            if (key === 'url' || key === 'json_path') {
+                continue;
+            }
+            
+            let fieldHtml = `<label for="config_${key}">${formatLabel(key)}`;
+            if (isRequired) fieldHtml += ' <span style="color: #e74c3c;">*</span>';
+            fieldHtml += `</label>`;
+            
+            const value = existingConfig[key] !== undefined ? existingConfig[key] : (prop.default || '');
+            
+            if (prop.enum) {
+                // Dropdown for enum values
+                fieldHtml += `<select id="config_${key}" onchange="updateConfigJSON()">`;
+                if (!isRequired) {
+                    fieldHtml += `<option value="">-- Not set --</option>`;
+                }
+                for (const enumValue of prop.enum) {
+                    const selected = value === enumValue ? 'selected' : '';
+                    fieldHtml += `<option value="${enumValue}" ${selected}>${formatLabel(enumValue)}</option>`;
+                }
+                fieldHtml += `</select>`;
+            } else if (prop.type === 'number' || prop.type === 'integer') {
+                // Number input
+                fieldHtml += `<input type="number" id="config_${key}" ` +
+                    `value="${value}" ` +
+                    `step="${prop.type === 'integer' ? '1' : '0.01'}" ` +
+                    `onchange="updateConfigJSON()" ` +
+                    `${isRequired ? 'required' : ''}>`;
+            } else if (prop.type === 'boolean') {
+                // Checkbox
+                const checked = value ? 'checked' : '';
+                fieldHtml += `<label><input type="checkbox" id="config_${key}" ${checked} onchange="updateConfigJSON()"> Enable</label>`;
+            } else {
+                // Text input
+                fieldHtml += `<input type="text" id="config_${key}" ` +
+                    `value="${value}" ` +
+                    `placeholder="${prop.description || ''}" ` +
+                    `onchange="updateConfigJSON()" ` +
+                    `${isRequired ? 'required' : ''}>`;
+            }
+            
+            if (prop.description) {
+                fieldHtml += `<small style="color: #7f8c8d; margin-top: 0.25rem; display: block;">${prop.description}</small>`;
+            }
+            
+            fieldDiv.innerHTML = fieldHtml;
+            dynamicFields.appendChild(fieldDiv);
+        }
+    }
+    
+    // Set up mode change listener for numeric plugin
+    if (category === 'NUMERIC') {
+        const modeField = document.getElementById('config_mode');
+        if (modeField) {
+            modeField.addEventListener('change', updateRangeFieldsVisibility);
+            updateRangeFieldsVisibility();
+        }
+    }
+    
+    // Initialize config JSON
+    updateConfigJSON();
+}
+
+function formatLabel(str) {
+    return str.split('_').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+}
+
+function updateRangeFieldsVisibility() {
+    const mode = document.getElementById('config_mode')?.value;
+    const rangeFields = ['min_value', 'max_value', 'midpoint'];
+    
+    for (const field of rangeFields) {
+        const fieldDiv = document.getElementById(`field-${field}`);
+        if (fieldDiv) {
+            if (mode && mode !== 'change_tracking') {
+                fieldDiv.style.display = 'block';
+            } else {
+                fieldDiv.style.display = 'none';
+            }
+        }
+    }
+}
+
+function updateConfigJSON() {
+    const config = {};
+    
+    // Get URL from API preview if present
+    const apiUrl = document.getElementById('api_url')?.value;
+    if (apiUrl) {
+        config.url = apiUrl;
+    }
+    
+    // Get json_path if set
+    const jsonPath = document.getElementById('config_json_path')?.value;
+    if (jsonPath) {
+        config.json_path = jsonPath;
+    }
+    
+    // Get all config_ fields
+    const inputs = document.querySelectorAll('[id^="config_"]');
+    for (const input of inputs) {
+        const key = input.id.replace('config_', '');
+        
+        // Skip the hidden json_path field
+        if (key === 'json_path') continue;
+        
+        let value;
+        
+        if (input.type === 'checkbox') {
+            value = input.checked;
+        } else if (input.type === 'number') {
+            value = input.value ? parseFloat(input.value) : undefined;
+        } else {
+            value = input.value;
+        }
+        
+        // Only include non-empty values
+        if (value !== undefined && value !== '' && value !== null) {
+            config[key] = value;
+        }
+    }
+    
+    // Update hidden field
+    document.getElementById('config_json').value = JSON.stringify(config);
 }
 
 async function testApiEndpoint() {
@@ -481,15 +609,14 @@ function selectField(path, element) {
     });
     element.classList.add('selected');
     
-    // Update config JSON
-    const url = document.getElementById('api_url').value;
-    const config = {
-        url: url,
-        json_path: path,
-        timeout: 10
-    };
+    // Set json_path in a hidden field or update config
+    const jsonPathField = document.getElementById('config_json_path');
+    if (jsonPathField) {
+        jsonPathField.value = path;
+    }
     
-    document.getElementById('config_json').value = JSON.stringify(config, null, 2);
+    // Trigger config update
+    updateConfigJSON();
     
     // Show success message
     const contentDiv = document.getElementById('api-preview-content');
@@ -501,9 +628,6 @@ function selectField(path, element) {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Trigger initial update to show/hide API preview based on selected plugin
-    updateConfigSchema();
-    
     // Initialize schedule display
     updateSchedule();
     
@@ -518,19 +642,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // If editing an existing source, populate API URL from config
-    const configField = document.getElementById('config_json');
     const apiUrlField = document.getElementById('api_url');
-    
-    if (configField.value && apiUrlField) {
-        try {
-            const config = JSON.parse(configField.value);
-            if (config.url) {
-                apiUrlField.value = config.url;
-            }
-        } catch (e) {
-            // Ignore parse errors
+    if (apiUrlField) {
+        if (window.existingSourceConfig.url) {
+            apiUrlField.value = window.existingSourceConfig.url;
         }
+        // Add change listener
+        apiUrlField.addEventListener('input', updateConfigJSON);
     }
+    
+    // If editing, populate json_path
+    const jsonPathField = document.getElementById('config_json_path');
+    if (jsonPathField && window.existingSourceConfig.json_path) {
+        jsonPathField.value = window.existingSourceConfig.json_path;
+    }
+    
+    // Generate config fields and initialize
+    updateConfigSchema();
 });
 </script>
 {% endblock %}
