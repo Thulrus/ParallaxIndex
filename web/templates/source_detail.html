@@ -6,6 +6,7 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
     <h2>{{ source.display_name }}</h2>
     <div style="display: flex; gap: 0.5rem;">
+        <a href="/sources/{{ source.source_id }}/edit" class="btn" style="background: #2c5282; color: white;">Edit</a>
         <form method="POST" action="/sources/{{ source.source_id }}/toggle" style="display: inline;">
             <button type="submit" class="btn">
                 {% if source.enabled %}Disable{% else %}Enable{% endif %}

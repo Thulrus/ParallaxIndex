@@ -46,8 +46,9 @@
                 </td>
                 <td>{{ item.source.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>
-                    <div style="display: flex; gap: 0.5rem;">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <a href="/sources/{{ item.source.source_id }}" class="btn">View</a>
+                        <a href="/sources/{{ item.source.source_id }}/edit" class="btn" style="background: #2c5282; color: white;">Edit</a>
                         <button class="btn" 
                                 onclick="collectNow('{{ item.source.source_id }}', '{{ item.source.display_name }}')"
                                 id="collect-btn-{{ item.source.source_id }}"

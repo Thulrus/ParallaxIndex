@@ -6,10 +6,10 @@
 <h2>{% if source %}Edit{% else %}Add New{% endif %} Source</h2>
 
 <div class="card">
-    <form method="POST" action="/sources/create" id="source-form">
+    <form method="POST" action="{% if source %}/sources/{{ source.source_id }}/update{% else %}/sources/create{% endif %}" id="source-form">
         <div class="form-group">
             <label for="plugin_id">Plugin Type</label>
-            <select name="plugin_id" id="plugin_id" required onchange="updateConfigSchema()">
+            <select name="plugin_id" id="plugin_id" required onchange="updateConfigSchema()" {% if source %}disabled{% endif %}>
                 <option value="">Select a plugin...</option>
                 {% for plugin in plugins %}
                 <option value="{{ plugin.plugin_id }}" 
@@ -22,6 +22,11 @@
                 </option>
                 {% endfor %}
             </select>
+            {% if source %}
+            <!-- Hidden field for disabled select -->
+            <input type="hidden" name="plugin_id" value="{{ source.plugin_id }}">
+            <small style="color: #666;">Plugin type cannot be changed after creation</small>
+            {% endif %}
         </div>
         
         <!-- Plugin schemas stored as JSON in script tags -->

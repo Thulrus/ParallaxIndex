@@ -245,6 +245,93 @@ async def view_source(request: Request, source_id: str):
     )
 
 
+@app.get("/sources/{source_id}/edit", response_class=HTMLResponse)
+async def edit_source_form(request: Request, source_id: str):
+    """
+    Form to edit an existing source.
+    """
+    try:
+        source = await db.get_source(UUID(source_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID")
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    registry = get_registry()
+    plugins = registry.list_plugins()
+    
+    return templates.TemplateResponse(
+        "source_form_enhanced.html",
+        {
+            "request": request,
+            "plugins": plugins,
+            "polarities": list(SentimentPolarity),
+            "source": source,
+            "schedule_human": cron_to_human(source.schedule)
+        }
+    )
+
+
+@app.post("/sources/{source_id}/update")
+async def update_source(
+    source_id: str,
+    plugin_id: str = Form(...),
+    display_name: str = Form(...),
+    enabled: bool = Form(False),
+    weight: float = Form(1.0),
+    sentiment_polarity: str = Form("POSITIVE_IS_GOOD"),
+    schedule: str = Form("0 * * * *"),
+    config_json: str = Form("{}")
+):
+    """
+    Update an existing source instance.
+    """
+    import json
+    
+    try:
+        source = await db.get_source(UUID(source_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID")
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    try:
+        config = json.loads(config_json)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON configuration")
+    
+    # Validate plugin exists
+    registry = get_registry()
+    plugin = registry.get_plugin(plugin_id)
+    if not plugin:
+        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
+    
+    # Validate config
+    is_valid, error = plugin.validate_config(config)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Invalid configuration: {error}")
+    
+    # Update source fields
+    source.plugin_id = plugin_id
+    source.display_name = display_name
+    source.enabled = enabled
+    source.config = config
+    source.weight = weight
+    source.sentiment_polarity = SentimentPolarity(sentiment_polarity)
+    source.schedule = schedule
+    
+    await db.update_source(source)
+    
+    # Update scheduler
+    await scheduler.unschedule_source(source_id)
+    if enabled:
+        await scheduler.schedule_source(source_id)
+    
+    return RedirectResponse(url=f"/sources/{source_id}", status_code=303)
+
+
 @app.post("/sources/{source_id}/collect")
 async def trigger_collection(source_id: str):
     """
