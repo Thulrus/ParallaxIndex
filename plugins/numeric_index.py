@@ -133,18 +133,56 @@ class NumericIndexPlugin(PluginBase):
     
     def _extract_json_path(self, data: Any, path: str) -> float:
         """
-        Extract a value from nested JSON using dot notation.
+        Extract value from nested JSON using dot notation and array indices.
         
-        Example: "data.value" extracts data["value"] from {"data": {"value": 123}}
+        Examples:
+            "data.value" -> data["value"]
+            "results[0].score" -> results[0]["score"]
+            "daily.temperature_2m_max[0]" -> daily["temperature_2m_max"][0]
+        
+        Args:
+            data: JSON data structure
+            path: Dot-notation path with optional array indices
+            
+        Returns:
+            Extracted numeric value
         """
+        import re
+        
+        # Split path by dots, but handle array indices
         parts = path.split(".")
         current = data
         
         for part in parts:
-            if isinstance(current, dict):
-                current = current[part]
+            # Check if this part has array index notation: name[index]
+            match = re.match(r'([^\[]+)(\[\d+\])+$', part)
+            
+            if match:
+                # Extract name and all indices
+                name = match.group(1)
+                indices_str = match.group(2)
+                
+                # Navigate to the named field first
+                if isinstance(current, dict) and name:
+                    current = current[name]
+                elif not name:  # Just indices, no name
+                    pass
+                else:
+                    raise KeyError(f"Cannot navigate path '{path}' - not a dict at '{part}'")
+                
+                # Process all array indices [0][1][2] etc.
+                for index_match in re.finditer(r'\[(\d+)\]', indices_str):
+                    index = int(index_match.group(1))
+                    if isinstance(current, list):
+                        current = current[index]
+                    else:
+                        raise KeyError(f"Cannot navigate path '{path}' - not a list at index {index}")
             else:
-                raise KeyError(f"Cannot navigate path '{path}' - not a dict at '{part}'")
+                # Simple dict navigation
+                if isinstance(current, dict):
+                    current = current[part]
+                else:
+                    raise KeyError(f"Cannot navigate path '{path}' - not a dict at '{part}'")
         
         return float(current)
     

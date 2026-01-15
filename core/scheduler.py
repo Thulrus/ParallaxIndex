@@ -123,7 +123,10 @@ class CollectionScheduler:
             await self._collect_and_distill(source_id)
             return f"Collection completed for {source_id}"
         except Exception as e:
-            return f"Collection failed: {str(e)}"
+            import traceback
+            error_msg = f"Collection failed: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            return error_msg
     
     async def _collect_and_distill(self, source_id: str) -> None:
         """

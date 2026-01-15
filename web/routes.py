@@ -4,25 +4,70 @@ Web interface for Parallax Index.
 FastAPI routes for the dashboard and source management.
 """
 
+from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from core.aggregation import AggregationEngine
-from core.schemas import SourceInstance, SentimentPolarity
+from core.api_preview import extract_all_paths, preview_api_endpoint
+from core.schedule_helpers import cron_to_human
 from core.scheduler import CollectionScheduler
+from core.schemas import SentimentPolarity, SourceInstance
 from plugins.registry import get_registry
 from storage.database import Database
 
+# Global instances (initialized in lifespan or main.py)
+db: Database = None
+scheduler: CollectionScheduler = None
+aggregator: AggregationEngine = None
 
-# Initialize FastAPI app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for app startup and shutdown.
+    This runs when uvicorn starts the app directly.
+    """
+    global db, scheduler, aggregator
+    
+    # Only initialize if not already initialized (e.g., by main.py)
+    if db is None:
+        print("Initializing Parallax Index via lifespan...")
+        
+        # Initialize database
+        db = Database("parallax_index.db")
+        await db.initialize()
+        
+        # Initialize plugin registry
+        registry = get_registry()
+        registry.discover_plugins()
+        
+        # Initialize aggregation engine
+        aggregator = AggregationEngine(db)
+        
+        # Initialize scheduler
+        scheduler = CollectionScheduler(db)
+        await scheduler.start()
+        
+        print("✓ Initialization complete")
+    
+    yield
+    
+    # Shutdown
+    if scheduler:
+        scheduler.stop()
+
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="Parallax Index",
     description="Global Sentiment & Cultural Drift Tracker",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Templates
@@ -81,11 +126,20 @@ async def list_sources(request: Request):
     """
     sources = await db.list_sources()
     
+    # Add human-readable schedules
+    sources_with_schedule = []
+    for source in sources:
+        source_dict = {
+            "source": source,
+            "schedule_human": cron_to_human(source.schedule)
+        }
+        sources_with_schedule.append(source_dict)
+    
     return templates.TemplateResponse(
         "sources.html",
         {
             "request": request,
-            "sources": sources
+            "sources": sources_with_schedule
         }
     )
 
@@ -99,7 +153,7 @@ async def new_source_form(request: Request):
     plugins = registry.list_plugins()
     
     return templates.TemplateResponse(
-        "source_form.html",
+        "source_form_enhanced.html",
         {
             "request": request,
             "plugins": plugins,
@@ -196,7 +250,10 @@ async def trigger_collection(source_id: str):
     """
     Trigger immediate collection for a source.
     """
+    print(f"[ROUTE] Collection triggered for {source_id}")
+    print(f"[ROUTE] Scheduler object: {scheduler}")
     result = await scheduler.collect_now(source_id)
+    print(f"[ROUTE] Collection result: {result}")
     return {"message": result}
 
 
@@ -283,3 +340,42 @@ async def health_check():
         "scheduler_running": scheduler.scheduler.running,
         "source_count": len(await db.list_sources())
     }
+
+
+@app.post("/api/preview-endpoint")
+async def api_preview_endpoint(
+    url: str = Form(...),
+    timeout: int = Form(10)
+):
+    """
+    Test an API endpoint and return its structure.
+    
+    This allows users to preview data before creating a source.
+    """
+    result = await preview_api_endpoint(url, timeout)
+    
+    if result.success:
+        # Extract all possible paths
+        paths = extract_all_paths(result.data)
+        
+        return {
+            "success": True,
+            "data": result.data,
+            "paths": [
+                {
+                    "path": path,
+                    "value": value,
+                    "type": value_type,
+                    "preview": str(value)[:100] if not isinstance(value, (dict, list)) else f"<{value_type}>"
+                }
+                for path, value, value_type in paths
+            ],
+            "content_type": result.content_type,
+            "status_code": result.status_code,
+            "response_time_ms": result.response_time_ms
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.error
+        }

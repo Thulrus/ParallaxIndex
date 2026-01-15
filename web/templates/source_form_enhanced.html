@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+
+{% block title %}{% if source %}Edit{% else %}New{% endif %} Source - Parallax Index{% endblock %}
+
+{% block content %}
+<h2>{% if source %}Edit{% else %}Add New{% endif %} Source</h2>
+
+<div class="card">
+    <form method="POST" action="/sources/create" id="source-form">
+        <div class="form-group">
+            <label for="plugin_id">Plugin Type</label>
+            <select name="plugin_id" id="plugin_id" required onchange="updateConfigSchema()">
+                <option value="">Select a plugin...</option>
+                {% for plugin in plugins %}
+                <option value="{{ plugin.plugin_id }}" 
+                        data-schema-id="schema_{{ plugin.plugin_id }}"
+                        data-category="{{ plugin.source_category.value }}"
+                        {% if source and source.plugin_id == plugin.plugin_id %}selected
+                        {% elif not source and loop.first %}selected
+                        {% endif %}>
+                    {{ plugin.display_name }} - {{ plugin.description }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Plugin schemas stored as JSON in script tags -->
+        {% for plugin in plugins %}
+        <script type="application/json" id="schema_{{ plugin.plugin_id }}">
+        {{ plugin.config_schema | tojson }}
+        </script>
+        {% endfor %}
+        
+        <div class="form-group">
+            <label for="display_name">Display Name</label>
+            <input type="text" name="display_name" id="display_name" 
+                   value="{% if source %}{{ source.display_name }}{% endif %}" 
+                   required placeholder="e.g., S&P 500 Index">
+        </div>
+        
+        <div class="form-group">
+            <label for="enabled">
+                <input type="checkbox" name="enabled" id="enabled" 
+                       {% if not source or source.enabled %}checked{% endif %}>
+                Enabled
+            </label>
+        </div>
+        
+        <div class="form-group">
+            <label for="weight">Weight (0-10)</label>
+            <input type="number" name="weight" id="weight" 
+                   value="{% if source %}{{ source.weight }}{% else %}1.0{% endif %}" 
+                   min="0" max="10" step="0.1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="sentiment_polarity">Sentiment Polarity</label>
+            <select name="sentiment_polarity" id="sentiment_polarity" required>
+                {% for polarity in polarities %}
+                <option value="{{ polarity.value }}" 
+                        {% if source and source.sentiment_polarity == polarity %}selected{% endif %}>
+                    {{ polarity.value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="schedule_preset">Collection Frequency</label>
+            <select name="schedule_preset" id="schedule_preset" onchange="updateSchedule()">
+                <option value="15min">Every 15 minutes</option>
+                <option value="30min">Every 30 minutes</option>
+                <option value="1hour" selected>Every hour</option>
+                <option value="2hours">Every 2 hours</option>
+                <option value="4hours">Every 4 hours</option>
+                <option value="6hours">Every 6 hours</option>
+                <option value="12hours">Every 12 hours</option>
+                <option value="daily">Daily at specific time</option>
+                <option value="custom">Custom (cron format)</option>
+            </select>
+        </div>
+        
+        <div class="form-group" id="daily_time_picker" style="display: none;">
+            <label>Daily Collection Time</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="number" id="daily_hour" min="0" max="23" value="0" style="width: 80px;" placeholder="Hour">
+                <span>:</span>
+                <input type="number" id="daily_minute" min="0" max="59" value="0" style="width: 80px;" placeholder="Min">
+                <small style="color: #7f8c8d; margin-left: 0.5rem;">(24-hour format)</small>
+            </div>
+        </div>
+        
+        <div class="form-group" id="cron_input_group" style="display: none;">
+            <label for="schedule">Schedule (cron format)</label>
+            <input type="text" name="schedule" id="schedule" 
+                   value="{% if source %}{{ source.schedule }}{% else %}0 * * * *{% endif %}" 
+                   required placeholder="0 * * * *">
+            <small style="color: #7f8c8d;">Cron format: minute hour day month weekday</small>
+        </div>
+        
+        <!-- Hidden field that actually gets submitted -->
+        <input type="hidden" name="schedule" id="schedule_hidden" value="0 * * * *">
+        
+        <div id="schedule_description" style="margin-top: 0.5rem; padding: 0.75rem; background: #e8f5e9; border-radius: 4px; color: #2e7d32;">
+            <strong>📅 Schedule:</strong> <span id="schedule_text">Every hour</span>
+        </div>
+        
+        <!-- API Preview Section -->
+        <div id="api-preview-section" style="display: none;">
+            <div class="form-group">
+                <label for="api_url">API URL</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="api_url" placeholder="https://api.example.com/data" style="flex: 1;">
+                    <button type="button" class="btn" onclick="testApiEndpoint()" id="test-btn">
+                        Test API
+                    </button>
+                </div>
+            </div>
+            
+            <div id="api-preview-results" style="display: none; margin-top: 1rem;">
+                <h4>API Response Preview</h4>
+                <div id="api-preview-content" style="
+                    background: #f8f9fa;
+                    border: 1px solid #dee2e6;
+                    border-radius: 4px;
+                    padding: 1rem;
+                    max-height: 400px;
+                    overflow-y: auto;
+                "></div>
+                
+                <div id="field-selector" style="margin-top: 1rem; display: none;">
+                    <label><strong>Select Field to Track:</strong></label>
+                    <div id="field-options" style="margin-top: 0.5rem;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="config_json">Configuration (JSON)</label>
+            <textarea name="config_json" id="config_json" required placeholder='{"url": "https://api.example.com/data"}'
+            >{% if source %}{{ source.config | tojson }}{% else %}{}{% endif %}</textarea>
+            <div id="schema_help" style="margin-top: 0.5rem; color: #7f8c8d; font-size: 0.875rem;"></div>
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success">{% if source %}Update{% else %}Create{% endif %} Source</button>
+            <a href="/sources" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.field-option {
+    padding: 0.5rem;
+    margin: 0.25rem 0;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.field-option:hover {
+    background: #e9ecef;
+    border-color: #3498db;
+}
+
+.field-option.selected {
+    background: #d4edda;
+    border-color: #28a745;
+}
+
+.field-option-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+}
+
+.field-option-path {
+    color: #2c3e50;
+    font-family: monospace;
+}
+
+.field-option-type {
+    background: #e9ecef;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.field-option-value {
+    margin-top: 0.25rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-family: monospace;
+}
+
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.error-message {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.success-message {
+    background: #d4edda;
+    color: #155724;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.api-info {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background: #e9ecef;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.api-info-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.api-info-label {
+    font-weight: 600;
+}
+</style>
+
+<script>
+let currentApiData = null;
+let selectedField = null;
+
+// Schedule presets mapping
+const schedulePresets = {
+    '15min': '*/15 * * * *',
+    '30min': '*/30 * * * *',
+    '1hour': '0 * * * *',
+    '2hours': '0 */2 * * *',
+    '4hours': '0 */4 * * *',
+    '6hours': '0 */6 * * *',
+    '12hours': '0 */12 * * *'
+};
+
+const scheduleDescriptions = {
+    '15min': 'Every 15 minutes',
+    '30min': 'Every 30 minutes',
+    '1hour': 'Every hour',
+    '2hours': 'Every 2 hours',
+    '4hours': 'Every 4 hours',
+    '6hours': 'Every 6 hours',
+    '12hours': 'Every 12 hours'
+};
+
+function updateSchedule() {
+    const preset = document.getElementById('schedule_preset').value;
+    const dailyTimePicker = document.getElementById('daily_time_picker');
+    const cronInputGroup = document.getElementById('cron_input_group');
+    const scheduleHidden = document.getElementById('schedule_hidden');
+    const scheduleText = document.getElementById('schedule_text');
+    const scheduleInput = document.getElementById('schedule');
+    
+    if (preset === 'daily') {
+        dailyTimePicker.style.display = 'block';
+        cronInputGroup.style.display = 'none';
+        updateDailySchedule();
+    } else if (preset === 'custom') {
+        dailyTimePicker.style.display = 'none';
+        cronInputGroup.style.display = 'block';
+        scheduleHidden.value = scheduleInput.value;
+        scheduleText.textContent = 'Custom: ' + scheduleInput.value;
+    } else {
+        dailyTimePicker.style.display = 'none';
+        cronInputGroup.style.display = 'none';
+        scheduleHidden.value = schedulePresets[preset];
+        scheduleText.textContent = scheduleDescriptions[preset];
+    }
+}
+
+function updateDailySchedule() {
+    const hour = document.getElementById('daily_hour').value || '0';
+    const minute = document.getElementById('daily_minute').value || '0';
+    const scheduleHidden = document.getElementById('schedule_hidden');
+    const scheduleText = document.getElementById('schedule_text');
+    
+    scheduleHidden.value = `${minute} ${hour} * * *`;
+    
+    // Format for display
+    const hourInt = parseInt(hour);
+    const minuteInt = parseInt(minute);
+    let period = 'AM';
+    let displayHour = hourInt;
+    
+    if (hourInt === 0) {
+        displayHour = 12;
+    } else if (hourInt === 12) {
+        period = 'PM';
+    } else if (hourInt > 12) {
+        displayHour = hourInt - 12;
+        period = 'PM';
+    }
+    
+    scheduleText.textContent = `Daily at ${displayHour}:${minuteInt.toString().padStart(2, '0')} ${period}`;
+}
+
+function updateConfigSchema() {
+    const select = document.getElementById('plugin_id');
+    const option = select.options[select.selectedIndex];
+    const schemaHelp = document.getElementById('schema_help');
+    const apiPreviewSection = document.getElementById('api-preview-section');
+    const configField = document.getElementById('config_json');
+    
+    if (option.value) {
+        // Get schema from script tag instead of data attribute
+        const schemaId = option.getAttribute('data-schema-id');
+        const schemaElement = document.getElementById(schemaId);
+        const schema = schemaElement ? JSON.parse(schemaElement.textContent) : {};
+        const category = option.getAttribute('data-category');
+        
+        // Show API preview for numeric plugins
+        if (category === 'NUMERIC') {
+            apiPreviewSection.style.display = 'block';
+        } else {
+            apiPreviewSection.style.display = 'none';
+        }
+        
+        let help = '<strong>Required fields:</strong><br>';
+        
+        if (schema.properties) {
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                const required = schema.required && schema.required.includes(key);
+                help += `• <code>${key}</code> (${prop.type})${required ? ' <em>required</em>' : ''}: ${prop.description || ''}<br>`;
+            }
+        }
+        
+        schemaHelp.innerHTML = help;
+        
+        // Set example config if empty
+        if (configField.value === '{}' || configField.value === '') {
+            const example = {};
+            if (schema.properties) {
+                for (const [key, prop] of Object.entries(schema.properties)) {
+                    if (schema.required && schema.required.includes(key)) {
+                        example[key] = prop.default || (prop.type === 'string' ? '' : 0);
+                    }
+                }
+            }
+            configField.value = JSON.stringify(example, null, 2);
+        }
+    } else {
+        schemaHelp.innerHTML = '';
+        apiPreviewSection.style.display = 'none';
+    }
+}
+
+async function testApiEndpoint() {
+    const url = document.getElementById('api_url').value;
+    const testBtn = document.getElementById('test-btn');
+    const resultsDiv = document.getElementById('api-preview-results');
+    const contentDiv = document.getElementById('api-preview-content');
+    
+    if (!url) {
+        alert('Please enter an API URL');
+        return;
+    }
+    
+    // Show loading state
+    testBtn.textContent = 'Testing...';
+    testBtn.classList.add('loading');
+    resultsDiv.style.display = 'block';
+    contentDiv.innerHTML = '<p>Fetching data...</p>';
+    
+    try {
+        const formData = new FormData();
+        formData.append('url', url);
+        formData.append('timeout', '10');
+        
+        const response = await fetch('/api/preview-endpoint', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentApiData = result.data;
+            displayApiPreview(result);
+        } else {
+            contentDiv.innerHTML = `<div class="error-message">Error: ${result.error}</div>`;
+        }
+    } catch (error) {
+        contentDiv.innerHTML = `<div class="error-message">Failed to test API: ${error.message}</div>`;
+    } finally {
+        testBtn.textContent = 'Test API';
+        testBtn.classList.remove('loading');
+    }
+}
+
+function displayApiPreview(result) {
+    const contentDiv = document.getElementById('api-preview-content');
+    const fieldSelector = document.getElementById('field-selector');
+    const fieldOptions = document.getElementById('field-options');
+    
+    // Display API info
+    let html = `
+        <div class="api-info">
+            <div class="api-info-item">
+                <span class="api-info-label">Status:</span>
+                <span style="color: #28a745;">✓ ${result.status_code}</span>
+            </div>
+            <div class="api-info-item">
+                <span class="api-info-label">Time:</span>
+                <span>${result.response_time_ms.toFixed(0)}ms</span>
+            </div>
+            <div class="api-info-item">
+                <span class="api-info-label">Type:</span>
+                <span>${result.content_type}</span>
+            </div>
+        </div>
+        <div class="success-message">
+            ✓ API connection successful! Select which field to track below.
+        </div>
+    `;
+    
+    contentDiv.innerHTML = html;
+    
+    // Display field options
+    if (result.paths && result.paths.length > 0) {
+        fieldSelector.style.display = 'block';
+        fieldOptions.innerHTML = '';
+        
+        // Filter to only numeric fields
+        const numericPaths = result.paths.filter(p => p.type === 'number' || p.type === 'int' || p.type === 'float');
+        
+        if (numericPaths.length === 0) {
+            fieldOptions.innerHTML = '<p style="color: #856404; background: #fff3cd; padding: 0.5rem; border-radius: 4px;">No numeric fields found in the response. This plugin tracks numeric values.</p>';
+            return;
+        }
+        
+        numericPaths.forEach(field => {
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'field-option';
+            fieldDiv.onclick = () => selectField(field.path, fieldDiv);
+            
+            fieldDiv.innerHTML = `
+                <div class="field-option-header">
+                    <span class="field-option-path">${field.path}</span>
+                    <span class="field-option-type">${field.type}</span>
+                </div>
+                <div class="field-option-value">Current value: ${field.preview}</div>
+            `;
+            
+            fieldOptions.appendChild(fieldDiv);
+        });
+    }
+}
+
+function selectField(path, element) {
+    selectedField = path;
+    
+    // Update UI
+    document.querySelectorAll('.field-option').forEach(el => {
+        el.classList.remove('selected');
+    });
+    element.classList.add('selected');
+    
+    // Update config JSON
+    const url = document.getElementById('api_url').value;
+    const config = {
+        url: url,
+        json_path: path,
+        timeout: 10
+    };
+    
+    document.getElementById('config_json').value = JSON.stringify(config, null, 2);
+    
+    // Show success message
+    const contentDiv = document.getElementById('api-preview-content');
+    const existingSuccess = contentDiv.querySelector('.success-message');
+    if (existingSuccess) {
+        existingSuccess.innerHTML = `✓ API connection successful! Tracking field: <code>${path}</code>`;
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    // Trigger initial update to show/hide API preview based on selected plugin
+    updateConfigSchema();
+    
+    // Initialize schedule display
+    updateSchedule();
+    
+    // Add listeners for daily time picker
+    document.getElementById('daily_hour').addEventListener('input', updateDailySchedule);
+    document.getElementById('daily_minute').addEventListener('input', updateDailySchedule);
+    
+    // Add listener for custom cron input
+    document.getElementById('schedule').addEventListener('input', function() {
+        document.getElementById('schedule_hidden').value = this.value;
+        document.getElementById('schedule_text').textContent = 'Custom: ' + this.value;
+    });
+    
+    // If editing an existing source, populate API URL from config
+    const configField = document.getElementById('config_json');
+    const apiUrlField = document.getElementById('api_url');
+    
+    if (configField.value && apiUrlField) {
+        try {
+            const config = JSON.parse(configField.value);
+            if (config.url) {
+                apiUrlField.value = config.url;
+            }
+        } catch (e) {
+            // Ignore parse errors
+        }
+    }
+});
+</script>
+{% endblock %}

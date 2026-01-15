@@ -136,7 +136,57 @@
                 "focus": true,
                 "panel": "dedicated",
                 "showReuseMessage": false,
-                "clear": false
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run: Start with Hot Reload (Development)",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/uvicorn"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/uvicorn"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\uvicorn.exe"
+            },
+            "args": [
+                "main:app",
+                "--reload",
+                "--port",
+                "8000",
+                "--host",
+                "0.0.0.0",
+                "--log-level",
+                "info"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Uvicorn running.*$",
+                    "endsPattern": "^.*Application startup complete.*$"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true
             },
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -180,7 +230,7 @@
                 "focus": true,
                 "panel": "dedicated",
                 "showReuseMessage": false,
-                "clear": false
+                "clear": true
             },
             "options": {
                 "cwd": "${workspaceFolder}",
