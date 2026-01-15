@@ -11,14 +11,8 @@ from typing import Any
 
 import httpx
 
-from core.schemas import (
-    DistilledSnapshot,
-    PluginDefinition,
-    RawSnapshot,
-    SourceCategory,
-    SourceInstance,
-    TermStat,
-)
+from core.schemas import (DistilledSnapshot, PluginDefinition, RawSnapshot,
+                          SourceCategory, SourceInstance, TermStat)
 from plugins.base import PluginBase
 
 
@@ -148,7 +142,7 @@ class NumericIndexPlugin(PluginBase):
             Extracted numeric value
         """
         import re
-        
+
         # Split path by dots, but handle array indices
         parts = path.split(".")
         current = data
