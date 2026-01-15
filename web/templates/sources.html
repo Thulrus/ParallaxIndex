@@ -25,7 +25,11 @@
         <tbody>
             {% for item in sources %}
             <tr>
-                <td><strong>{{ item.source.display_name }}</strong></td>
+                <td>
+                    <a href="/sources/{{ item.source.source_id }}" style="color: #2c5282; text-decoration: none; font-weight: 600;">
+                        {{ item.source.display_name }}
+                    </a>
+                </td>
                 <td>{{ item.source.plugin_id }}</td>
                 <td>
                     {% if item.source.enabled %}

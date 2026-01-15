@@ -234,8 +234,36 @@ class NumericIndexPlugin(PluginBase):
         # Calculate anomaly score
         anomaly_score = self._calculate_anomaly(history, current_value)
         
-        # No terms for numeric sources
-        terms: list[TermStat] = []
+        # Store the numeric value in terms array for future reference
+        # Encode as string in the term field
+        terms = [
+            TermStat(
+                term=f"value:{current_value}",  # Store value in the term name
+                weight=1.0,
+                polarity=0.0,  # Neutral polarity for numeric values
+                novelty=0.0
+            )
+        ]
+        
+        # Calculate min/max from history
+        all_values = [current_value]
+        if history:
+            all_values.extend([
+                self._extract_value_from_history(s) for s in history
+            ])
+        
+        min_value = min(all_values)
+        max_value = max(all_values)
+        
+        # Build metadata for display
+        metadata = {
+            "current_value": current_value,
+            "min_value": min_value,
+            "max_value": max_value,
+            "sample_count": len(history) + 1,
+            "previous_value": previous_value,
+            "baseline": baseline
+        }
         
         return DistilledSnapshot(
             source_id=raw.source_id,
@@ -244,25 +272,34 @@ class NumericIndexPlugin(PluginBase):
             sentiment_confidence=confidence,
             volatility=volatility,
             terms=terms,
-            term_entropy=0.0,  # No terms
+            term_entropy=0.0,
             anomaly_score=anomaly_score,
-            coverage=1.0  # Full coverage for single numeric value
+            coverage=1.0,
+            metadata=metadata
         )
     
     def _extract_value_from_history(self, snapshot: DistilledSnapshot) -> float:
         """
-        Extract the numeric value from a historical snapshot.
+        Extract numeric value from a historical snapshot.
         
-        For numeric sources, we can reconstruct the value from sentiment and volatility,
-        but for simplicity in this MVP, we'll track it in a custom field or derive it.
+        The value is stored in the terms array with format "value:123.45"
         
-        Since we don't have the raw value in DistilledSnapshot, we'll need to enhance
-        the schema or use a workaround. For now, we'll use a simple heuristic.
+        Args:
+            snapshot: Historical distilled snapshot
+            
+        Returns:
+            The numeric value from that snapshot
         """
-        # This is a limitation of the pure schema - we'd need to store the value
-        # For MVP, we'll use sentiment as a proxy (not ideal but demonstrates the flow)
-        # In production, we might add an optional 'metadata' field to DistilledSnapshot
-        return 0.0  # Placeholder - see note above
+        # Look for the value: term
+        for term in snapshot.terms:
+            if term.term.startswith("value:"):
+                try:
+                    return float(term.term.split(":", 1)[1])
+                except (ValueError, IndexError):
+                    pass
+        
+        # Fallback if not found (for old snapshots)
+        return 0.0
     
     def _calculate_volatility(
         self,

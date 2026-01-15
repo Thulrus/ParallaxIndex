@@ -57,6 +57,54 @@
     </table>
 </div>
 
+{% if history and history[0].metadata %}
+<div class="card">
+    <h3>Current Data</h3>
+    {% set metadata = history[0].metadata %}
+    {% if source.plugin_id == 'NUMERIC' %}
+        <table>
+            <tr>
+                <th>Current Value</th>
+                <td style="font-size: 1.5rem; font-weight: bold; color: #2c5282;">{{ "%.2f"|format(metadata.current_value) }}</td>
+            </tr>
+            <tr>
+                <th>Minimum Observed</th>
+                <td>{{ "%.2f"|format(metadata.min_value) }}</td>
+            </tr>
+            <tr>
+                <th>Maximum Observed</th>
+                <td>{{ "%.2f"|format(metadata.max_value) }}</td>
+            </tr>
+            <tr>
+                <th>Range</th>
+                <td>{{ "%.2f"|format(metadata.max_value - metadata.min_value) }}</td>
+            </tr>
+            {% if metadata.previous_value is not none %}
+            <tr>
+                <th>Change from Previous</th>
+                <td>
+                    {% set change = metadata.current_value - metadata.previous_value %}
+                    {% if change > 0 %}
+                        <span style="color: #22c55e;">▲ {{ "%.2f"|format(change) }}</span>
+                    {% elif change < 0 %}
+                        <span style="color: #ef4444;">▼ {{ "%.2f"|format(change|abs) }}</span>
+                    {% else %}
+                        <span style="color: #6b7280;">— No change</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            <tr>
+                <th>Samples Collected</th>
+                <td>{{ metadata.sample_count }}</td>
+            </tr>
+        </table>
+    {% else %}
+        <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px;">{{ metadata | tojson(indent=2) }}</pre>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="card">
     <h3>Recent Snapshots</h3>
     {% if history %}

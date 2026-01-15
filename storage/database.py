@@ -81,6 +81,7 @@ class Database:
                     term_entropy REAL NOT NULL,
                     anomaly_score REAL NOT NULL,
                     coverage REAL NOT NULL,
+                    metadata TEXT,
                     FOREIGN KEY (source_id) REFERENCES source_instances (source_id)
                         ON DELETE CASCADE
                 )
@@ -224,8 +225,8 @@ class Database:
             await db.execute("""
                 INSERT INTO distilled_snapshots (
                     source_id, timestamp, sentiment, sentiment_confidence,
-                    volatility, terms, term_entropy, anomaly_score, coverage
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    volatility, terms, term_entropy, anomaly_score, coverage, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 str(snapshot.source_id),
                 snapshot.timestamp.isoformat(),
@@ -235,7 +236,8 @@ class Database:
                 json.dumps([term.model_dump() for term in snapshot.terms]),
                 snapshot.term_entropy,
                 snapshot.anomaly_score,
-                snapshot.coverage
+                snapshot.coverage,
+                json.dumps(snapshot.metadata) if snapshot.metadata else None
             ))
             await db.commit()
     
@@ -339,6 +341,10 @@ class Database:
         terms_data = json.loads(row["terms"])
         terms = [TermStat(**term) for term in terms_data]
         
+        metadata = None
+        if row["metadata"]:
+            metadata = json.loads(row["metadata"])
+        
         return DistilledSnapshot(
             source_id=UUID(row["source_id"]),
             timestamp=datetime.fromisoformat(row["timestamp"]),
@@ -348,5 +354,6 @@ class Database:
             terms=terms,
             term_entropy=row["term_entropy"],
             anomaly_score=row["anomaly_score"],
-            coverage=row["coverage"]
+            coverage=row["coverage"],
+            metadata=metadata
         )

@@ -239,6 +239,10 @@ class DistilledSnapshot(BaseModel):
         le=1.0,
         description="Data quality/completeness metric (0-1)"
     )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-specific metadata for display purposes (e.g., current value, min/max)"
+    )
     
     class Config:
         json_schema_extra = {
