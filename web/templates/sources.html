@@ -44,7 +44,7 @@
                     <br>
                     <small style="color: #7f8c8d; font-family: monospace;">{{ item.source.schedule }}</small>
                 </td>
-                <td>{{ item.source.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td data-utc-timestamp="{{ item.source.created_at.isoformat() }}">{{ item.source.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
                 <td>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <a href="/sources/{{ item.source.source_id }}" class="btn">View</a>
@@ -110,6 +110,25 @@
 </style>
 
 <script>
+// Convert UTC timestamps to local time
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-utc-timestamp]').forEach(cell => {
+        const utcTimestamp = cell.getAttribute('data-utc-timestamp');
+        // Add 'Z' suffix if not present to ensure UTC interpretation
+        const isoString = utcTimestamp.endsWith('Z') ? utcTimestamp : utcTimestamp + 'Z';
+        const date = new Date(isoString);
+        
+        // Format: YYYY-MM-DD HH:MM
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        cell.textContent = `${year}-${month}-${day} ${hours}:${minutes}`;
+    });
+});
+
 async function collectNow(sourceId, sourceName) {
     const btn = document.getElementById(`collect-btn-${sourceId}`);
     const originalText = btn.innerHTML;

@@ -12,11 +12,13 @@
                 {% if source.enabled %}Disable{% else %}Enable{% endif %}
             </button>
         </form>
-        <form method="POST" action="/sources/{{ source.source_id }}/collect" style="display: inline;">
-            <button type="submit" class="btn btn-success">Collect Now</button>
-        </form>
+        <button type="button" class="btn btn-success" onclick="collectNow('{{ source.source_id }}', '{{ source.display_name }}')" id="collect-btn">
+            ⚡ Collect Now
+        </button>
     </div>
 </div>
+
+<div id="notification-container"></div>
 
 <div class="card">
     <h3>Source Information</h3>
@@ -146,7 +148,7 @@
         <tbody>
             {% for snapshot in history %}
             <tr>
-                <td>{{ snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td data-utc-timestamp="{{ snapshot.timestamp.isoformat() }}">{{ snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td>
                 <td class="{% if snapshot.sentiment > 0.1 %}sentiment-positive{% elif snapshot.sentiment < -0.1 %}sentiment-negative{% else %}sentiment-neutral{% endif %}">
                     {{ "%.3f"|format(snapshot.sentiment) }}
                 </td>
@@ -166,4 +168,117 @@
 <div style="margin-top: 1rem;">
     <a href="/sources" class="btn">Back to Sources</a>
 </div>
+
+<style>
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    animation: slideIn 0.3s ease-out;
+    z-index: 1000;
+    max-width: 400px;
+}
+
+.notification-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.notification-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.btn-collecting {
+    opacity: 0.6;
+    pointer-events: none;
+}
+</style>
+
+<script>
+// Convert UTC timestamps to local time
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-utc-timestamp]').forEach(cell => {
+        const utcTimestamp = cell.getAttribute('data-utc-timestamp');
+        // Add 'Z' suffix if not present to ensure UTC interpretation
+        const isoString = utcTimestamp.endsWith('Z') ? utcTimestamp : utcTimestamp + 'Z';
+        const date = new Date(isoString);
+        
+        // Format: YYYY-MM-DD HH:MM:SS
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        
+        cell.textContent = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    });
+});
+
+async function collectNow(sourceId, sourceName) {
+    const btn = document.getElementById('collect-btn');
+    const originalText = btn.innerHTML;
+    
+    // Disable button and show loading state
+    btn.classList.add('btn-collecting');
+    btn.innerHTML = '⏳ Collecting...';
+    
+    try {
+        const response = await fetch(`/sources/${sourceId}/collect`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification(`✓ Successfully collected data from "${sourceName}"`, 'success');
+            // Reload page after 1 second to show new data
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showNotification(`✗ Failed to collect from "${sourceName}": ${result.message || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`✗ Error collecting from "${sourceName}": ${error.message}`, 'error');
+    } finally {
+        // Re-enable button
+        btn.classList.remove('btn-collecting');
+        btn.innerHTML = originalText;
+    }
+}
+
+function showNotification(message, type) {
+    // Remove existing notifications
+    const existing = document.querySelectorAll('.notification');
+    existing.forEach(n => n.remove());
+    
+    // Create notification
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideIn 0.3s ease-out reverse';
+        setTimeout(() => notification.remove(), 300);
+    }, 4000);
+}
+</script>
 {% endblock %}
