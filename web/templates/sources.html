@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Sources - Parallax Index{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h2>Sources</h2>
+    <a href="/sources/new" class="btn btn-success">Add New Source</a>
+</div>
+
+<div class="card">
+    {% if sources %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Plugin</th>
+                <th>Status</th>
+                <th>Weight</th>
+                <th>Schedule</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            <tr>
+                <td><strong>{{ source.display_name }}</strong></td>
+                <td>{{ source.plugin_id }}</td>
+                <td>
+                    {% if source.enabled %}
+                    <span class="badge badge-enabled">Enabled</span>
+                    {% else %}
+                    <span class="badge badge-disabled">Disabled</span>
+                    {% endif %}
+                </td>
+                <td>{{ source.weight }}</td>
+                <td><code>{{ source.schedule }}</code></td>
+                <td>{{ source.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    <a href="/sources/{{ source.source_id }}" class="btn">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No sources configured yet.</p>
+    <a href="/sources/new" class="btn btn-success">Add Your First Source</a>
+    {% endif %}
+</div>
+{% endblock %}

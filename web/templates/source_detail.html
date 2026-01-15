@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ source.display_name }} - Parallax Index{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h2>{{ source.display_name }}</h2>
+    <div style="display: flex; gap: 0.5rem;">
+        <form method="POST" action="/sources/{{ source.source_id }}/toggle" style="display: inline;">
+            <button type="submit" class="btn">
+                {% if source.enabled %}Disable{% else %}Enable{% endif %}
+            </button>
+        </form>
+        <form method="POST" action="/sources/{{ source.source_id }}/collect" style="display: inline;">
+            <button type="submit" class="btn btn-success">Collect Now</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Source Information</h3>
+    <table>
+        <tr>
+            <th>Plugin</th>
+            <td>{{ plugin.display_name }} ({{ plugin.plugin_id }})</td>
+        </tr>
+        <tr>
+            <th>Status</th>
+            <td>
+                {% if source.enabled %}
+                <span class="badge badge-enabled">Enabled</span>
+                {% else %}
+                <span class="badge badge-disabled">Disabled</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>Weight</th>
+            <td>{{ source.weight }}</td>
+        </tr>
+        <tr>
+            <th>Polarity</th>
+            <td>{{ source.sentiment_polarity.value }}</td>
+        </tr>
+        <tr>
+            <th>Schedule</th>
+            <td><code>{{ source.schedule }}</code></td>
+        </tr>
+        <tr>
+            <th>Configuration</th>
+            <td><pre style="background: #f8f9fa; padding: 0.5rem; border-radius: 4px;">{{ source.config | tojson(indent=2) }}</pre></td>
+        </tr>
+        <tr>
+            <th>Created</th>
+            <td>{{ source.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Recent Snapshots</h3>
+    {% if history %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Sentiment</th>
+                <th>Confidence</th>
+                <th>Volatility</th>
+                <th>Anomaly Score</th>
+                <th>Coverage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for snapshot in history %}
+            <tr>
+                <td>{{ snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td class="{% if snapshot.sentiment > 0.1 %}sentiment-positive{% elif snapshot.sentiment < -0.1 %}sentiment-negative{% else %}sentiment-neutral{% endif %}">
+                    {{ "%.3f"|format(snapshot.sentiment) }}
+                </td>
+                <td>{{ "%.2f"|format(snapshot.sentiment_confidence * 100) }}%</td>
+                <td>{{ "%.3f"|format(snapshot.volatility) }}</td>
+                <td>{{ "%.3f"|format(snapshot.anomaly_score) }}</td>
+                <td>{{ "%.2f"|format(snapshot.coverage * 100) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No snapshots collected yet.</p>
+    {% endif %}
+</div>
+
+<div style="margin-top: 1rem;">
+    <a href="/sources" class="btn">Back to Sources</a>
+</div>
+{% endblock %}

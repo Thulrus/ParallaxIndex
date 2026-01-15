@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{% if source %}Edit{% else %}New{% endif %} Source - Parallax Index{% endblock %}
+
+{% block content %}
+<h2>{% if source %}Edit{% else %}Add New{% endif %} Source</h2>
+
+<div class="card">
+    <form method="POST" action="/sources/create">
+        <div class="form-group">
+            <label for="plugin_id">Plugin Type</label>
+            <select name="plugin_id" id="plugin_id" required onchange="updateConfigSchema()">
+                <option value="">Select a plugin...</option>
+                {% for plugin in plugins %}
+                <option value="{{ plugin.plugin_id }}" 
+                        data-schema="{{ plugin.config_schema | tojson | escape }}"
+                        {% if source and source.plugin_id == plugin.plugin_id %}selected{% endif %}>
+                    {{ plugin.display_name }} - {{ plugin.description }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="display_name">Display Name</label>
+            <input type="text" name="display_name" id="display_name" 
+                   value="{% if source %}{{ source.display_name }}{% endif %}" 
+                   required placeholder="e.g., S&P 500 Index">
+        </div>
+        
+        <div class="form-group">
+            <label for="enabled">
+                <input type="checkbox" name="enabled" id="enabled" 
+                       {% if not source or source.enabled %}checked{% endif %}>
+                Enabled
+            </label>
+        </div>
+        
+        <div class="form-group">
+            <label for="weight">Weight (0-10)</label>
+            <input type="number" name="weight" id="weight" 
+                   value="{% if source %}{{ source.weight }}{% else %}1.0{% endif %}" 
+                   min="0" max="10" step="0.1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="sentiment_polarity">Sentiment Polarity</label>
+            <select name="sentiment_polarity" id="sentiment_polarity" required>
+                {% for polarity in polarities %}
+                <option value="{{ polarity.value }}" 
+                        {% if source and source.sentiment_polarity == polarity %}selected{% endif %}>
+                    {{ polarity.value }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="schedule">Schedule (cron format)</label>
+            <input type="text" name="schedule" id="schedule" 
+                   value="{% if source %}{{ source.schedule }}{% else %}0 * * * *{% endif %}" 
+                   required placeholder="0 * * * *">
+            <small style="color: #7f8c8d;">Cron format: minute hour day month weekday (e.g., "0 * * * *" = every hour)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="config_json">Configuration (JSON)</label>
+            <textarea name="config_json" id="config_json" required placeholder='{"url": "https://api.example.com/data"}'
+            >{% if source %}{{ source.config | tojson }}{% else %}{}{% endif %}</textarea>
+            <div id="schema_help" style="margin-top: 0.5rem; color: #7f8c8d; font-size: 0.875rem;"></div>
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success">{% if source %}Update{% else %}Create{% endif %} Source</button>
+            <a href="/sources" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function updateConfigSchema() {
+    const select = document.getElementById('plugin_id');
+    const option = select.options[select.selectedIndex];
+    const schemaHelp = document.getElementById('schema_help');
+    
+    if (option.value) {
+        const schema = JSON.parse(option.getAttribute('data-schema'));
+        let help = '<strong>Required fields:</strong><br>';
+        
+        if (schema.properties) {
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                const required = schema.required && schema.required.includes(key);
+                help += `• <code>${key}</code> (${prop.type})${required ? ' <em>required</em>' : ''}: ${prop.description || ''}<br>`;
+            }
+        }
+        
+        schemaHelp.innerHTML = help;
+        
+        // Set example config
+        const configField = document.getElementById('config_json');
+        if (configField.value === '{}' || configField.value === '') {
+            const example = {};
+            if (schema.properties) {
+                for (const [key, prop] of Object.entries(schema.properties)) {
+                    if (schema.required && schema.required.includes(key)) {
+                        example[key] = prop.default || (prop.type === 'string' ? '' : 0);
+                    }
+                }
+            }
+            configField.value = JSON.stringify(example, null, 2);
+        }
+    } else {
+        schemaHelp.innerHTML = '';
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Parallax Index{% endblock %}
+
+{% block content %}
+<h2>Global Sentiment</h2>
+
+{% if global_sentiment %}
+<div class="card">
+    <div class="sentiment-display">
+        <div class="sentiment-label">Current Sentiment</div>
+        <div class="sentiment-value {% if global_sentiment.global_sentiment > 0.1 %}sentiment-positive{% elif global_sentiment.global_sentiment < -0.1 %}sentiment-negative{% else %}sentiment-neutral{% endif %}">
+            {{ "%.3f"|format(global_sentiment.global_sentiment) }}
+        </div>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-label">Confidence</div>
+                <div class="metric-value">{{ "%.2f"|format(global_sentiment.confidence * 100) }}%</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Sources</div>
+                <div class="metric-value">{{ global_sentiment.source_count }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Volatility</div>
+                <div class="metric-value">{{ "%.3f"|format(global_sentiment.volatility) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p>No data available. Add and enable sources to begin tracking sentiment.</p>
+</div>
+{% endif %}
+
+<h2>Active Sources</h2>
+
+<div class="card">
+    {% if sources %}
+    <table>
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Plugin</th>
+                <th>Status</th>
+                <th>Latest Sentiment</th>
+                <th>Confidence</th>
+                <th>Trend</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in sources %}
+            <tr>
+                <td><a href="/sources/{{ item.source.source_id }}">{{ item.source.display_name }}</a></td>
+                <td>{{ item.source.plugin_id }}</td>
+                <td>
+                    {% if item.source.enabled %}
+                    <span class="badge badge-enabled">Enabled</span>
+                    {% else %}
+                    <span class="badge badge-disabled">Disabled</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.latest %}
+                    <span class="{% if item.latest.sentiment > 0.1 %}sentiment-positive{% elif item.latest.sentiment < -0.1 %}sentiment-negative{% else %}sentiment-neutral{% endif %}">
+                        {{ "%.3f"|format(item.latest.sentiment) }}
+                    </span>
+                    {% else %}
+                    <span style="color: #999;">No data</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.latest %}
+                    {{ "%.2f"|format(item.latest.sentiment_confidence * 100) }}%
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.trend %}
+                        {% if item.trend > 0.1 %}
+                        <span class="trend-up">↑ {{ "%.2f"|format(item.trend) }}</span>
+                        {% elif item.trend < -0.1 %}
+                        <span class="trend-down">↓ {{ "%.2f"|format(item.trend) }}</span>
+                        {% else %}
+                        <span class="trend-stable">→ {{ "%.2f"|format(item.trend) }}</span>
+                        {% endif %}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/sources/{{ item.source.source_id }}" class="btn">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No sources configured. <a href="/sources/new">Add your first source</a>.</p>
+    {% endif %}
+</div>
+{% endblock %}

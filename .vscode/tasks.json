@@ -1,0 +1,360 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Setup: Create Virtual Environment",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "-m",
+                "venv",
+                "venv"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Setup: Install Dependencies",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\pip.exe"
+            },
+            "args": [
+                "install",
+                "-r",
+                "requirements.txt"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": []
+        },
+        {
+            "label": "Setup: Complete Setup (venv + deps)",
+            "dependsOn": [
+                "Setup: Create Virtual Environment",
+                "Setup: Install Dependencies"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        },
+        {
+            "label": "Run: Verify Setup",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\python.exe"
+            },
+            "args": [
+                "setup_check.py"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run: Start Application",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\python.exe"
+            },
+            "args": [
+                "main.py"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Parallax Index.*$",
+                    "endsPattern": "^.*Application initialized successfully.*$"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run: Start Application (Debug Mode)",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\python.exe"
+            },
+            "args": [
+                "-u",
+                "main.py"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Parallax Index.*$",
+                    "endsPattern": "^.*Application initialized successfully.*$"
+                }
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONUNBUFFERED": "1"
+                }
+            }
+        },
+        {
+            "label": "Database: Clean (Delete DB)",
+            "type": "shell",
+            "linux": {
+                "command": "rm"
+            },
+            "osx": {
+                "command": "rm"
+            },
+            "windows": {
+                "command": "del"
+            },
+            "args": [
+                "-f",
+                "parallax_index.db"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Database: Clean and Restart",
+            "dependsOn": [
+                "Database: Clean (Delete DB)",
+                "Run: Start Application"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Dev: Install Package",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\pip.exe"
+            },
+            "args": [
+                "install",
+                "${input:packageName}"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Dev: Freeze Requirements",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\pip.exe"
+            },
+            "args": [
+                "freeze",
+                ">",
+                "requirements.txt"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Dev: Upgrade Dependencies",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/pip"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\pip.exe"
+            },
+            "args": [
+                "install",
+                "--upgrade",
+                "-r",
+                "requirements.txt"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Test: Run Tests (when available)",
+            "type": "shell",
+            "linux": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "osx": {
+                "command": "${workspaceFolder}/venv/bin/python"
+            },
+            "windows": {
+                "command": "${workspaceFolder}\\venv\\Scripts\\python.exe"
+            },
+            "args": [
+                "-m",
+                "pytest",
+                "tests/",
+                "-v"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "packageName",
+            "type": "promptString",
+            "description": "Package name to install",
+            "default": ""
+        }
+    ]
+}
